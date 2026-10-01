@@ -6,6 +6,34 @@ Cole um trecho de um livro e descubra de qual obra ele é. Depois, leia a obra (
 
 Esta é a versão fullstack pessoal, construída sobre o frontend estático do grupo e sobre a mesma stack do backend do Projeto Integrador (FastAPI + PostgreSQL/pg_trgm).
 
+> **Projeto acadêmico**, sem fins comerciais. Desenvolvido para a disciplina **Projeto Integrador** do curso de
+> **Engenharia de Software** do **Centro Universitário Dom Bosco (AEDB)**, Resende – RJ.
+>
+> **Autor:** Luiz Felipe Nunes Alves da Silva
+>
+> Existe também uma versão desenvolvida em grupo para a mesma disciplina. Este repositório é a versão
+> individual e fullstack (backend, banco de dados, contas de usuário e leitor).
+
+## Funcionalidades
+
+- **Identificação por trecho**: busca por similaridade de trigramas (`pg_trgm` + índice GIN), tolerante a erros de digitação, acentos ausentes e ortografia antiga.
+- **Leitor** de obras em domínio público, com páginas, marcadores, sublinhados coloridos com nota, tamanho de fonte e papel.
+- **Tradução automática** de livros em inglês ao ler com o site em português (e vice-versa), com cache no banco.
+- **Busca de livros** no catálogo da Open Library, com detalhes e capa.
+- **Biblioteca**: favoritos, "continuar lendo" e progresso.
+- **Conta**: cadastro, confirmação de e-mail, "esqueci minha senha", troca de senha, sair de todos os dispositivos e exclusão da conta. Sem conta, tudo funciona no navegador e é importado ao entrar.
+- Interface em **português e inglês**.
+
+## Tecnologias
+
+| Camada | Tecnologias |
+|---|---|
+| Backend | Python 3.11+, FastAPI, SQLAlchemy 2, Pydantic v2, bcrypt, JWT |
+| Banco | PostgreSQL 14+ com a extensão `pg_trgm` |
+| Frontend | HTML, CSS e JavaScript puro (módulos ES), sem framework |
+| Testes e qualidade | pytest (67 testes), ruff, bandit, pip-audit, ESLint, Schemathesis, Playwright, axe-core |
+| Infra | Docker / docker-compose, AWS (EC2 + RDS) |
+
 ```
 freedom-reading/
 ├── backend/
@@ -22,7 +50,7 @@ freedom-reading/
 │   ├── scripts/
 │   │   ├── ingest_gutenberg.py  # baixa e indexa livros no acervo
 │   │   └── test_matching.py     # calibra o SIMILARITY_THRESHOLD
-│   └── tests/                 # pytest (66 testes) + amostras offline
+│   └── tests/                 # pytest (67 testes) + amostras offline
 ├── frontend/
 │   ├── index.html
 │   ├── css/styles.css
@@ -55,6 +83,29 @@ uvicorn app.main:app --reload
 ```
 
 Abra **http://localhost:8000** (app) e **http://localhost:8000/docs** (Swagger da API).
+
+### No Windows, sem Docker
+
+Com Python 3.11+ e PostgreSQL instalados, crie o usuário e o banco no **SQL Shell (psql)**, conectado como `postgres`:
+
+```sql
+CREATE ROLE freedom LOGIN PASSWORD 'freedom';
+CREATE DATABASE freedom OWNER freedom;
+\c freedom
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
+
+Depois, no PowerShell, dentro de `backend`:
+
+```powershell
+python -m venv .venv
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # só na primeira vez, se o activate for bloqueado
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env      # e cole no JWT_SECRET a saída de: python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -m scripts.ingest_gutenberg
+uvicorn app.main:app --reload
+```
 
 Tudo em containers: `docker compose up --build` (a ingestão roda com `docker compose exec api python -m scripts.ingest_gutenberg`).
 
@@ -196,3 +247,11 @@ Mesma arquitetura do projeto do grupo: **EC2 (t3.micro) + RDS PostgreSQL (db.t3.
 4. Security groups: EC2 aceita 80/8000 da internet; RDS aceita 5432 **só do security group do EC2**.
 
 Como o Learner Lab desliga ao fim da sessão, o IP público do EC2 muda — use um Elastic IP se precisar de um endereço fixo para a apresentação.
+
+## Créditos e licença
+
+- Textos das obras: [Project Gutenberg](https://www.gutenberg.org) (obras em domínio público). O cabeçalho e a licença do Gutenberg são removidos na ingestão, e os textos baixados não fazem parte deste repositório.
+- Catálogo, capas e detalhes: [Open Library](https://openlibrary.org) · busca de versões gratuitas: [Gutendex](https://gutendex.com).
+- Tradução: [MyMemory](https://mymemory.translated.net) (padrão), LibreTranslate ou Amazon Translate.
+- O código deste repositório está sob a licença [MIT](LICENSE).
+
