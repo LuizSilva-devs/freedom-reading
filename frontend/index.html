@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freadom Reading</title>
+<meta name="description" content="Cole um trecho e descubra de qual livro ele é. Leia obras em domínio público no navegador.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=Instrument+Sans:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta name="theme-color" content="#6b4226">
+</head>
+<body data-theme="literatura">
+
+<!-- Ícones (SVG sprite) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></symbol>
+    <symbol id="i-books" viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16.5 5l3.5 1-3.5 14-3.5-1"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-9a4.8 4.8 0 0 1 9-3 4.8 4.8 0 0 1 9 3c-2 4.6-9 9-9 9z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-open" viewBox="0 0 24 24"><path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z"/><path d="M12 6v13.5"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3.5h12V21l-6-4.5L6 21z"/></symbol>
+    <symbol id="i-notes" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h3"/></symbol>
+    <symbol id="i-translate" viewBox="0 0 24 24"><path d="M3 5h9M7.5 3v2c0 4-2 7-4.5 8.5M5.5 9c1 2 3 3.5 5 4.5M12.5 21l4-10 4 10M14 17.5h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip-link" href="#main" data-i18n="app.skip">Ir para o conteúdo</a>
+<div id="toast-container" role="status" aria-live="polite"></div>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="logo" href="#/" aria-label="Freadom Reading — início">
+      <img class="logo-img" src="img/logo-mark.png" alt="" width="240" height="141">
+      <span class="logo-text"><span class="wordmark"><span class="wm-a">Freadom</span><span class="wm-b">_Reading</span></span>
+      <span class="slogan" data-i18n="brand.slogan">Mais livros. Mais liberdade.</span></span>
+    </a>
+    <form class="side-search" data-form="search" role="search" aria-label="Busca rápida" data-i18n-aria="search.quick">
+      <svg aria-hidden="true"><use href="#i-search"/></svg>
+      <input type="search" name="q" maxlength="200" data-i18n-ph="search.short" data-i18n-aria="search.open" autocomplete="off">
+    </form>
+    <nav class="nav" aria-label="Principal" data-i18n-aria="nav.main">
+      <a class="nav-item" data-nav="home" href="#/"><svg><use href="#i-home"/></svg><span data-i18n="nav.home">Início</span></a>
+      <a class="nav-item" data-nav="explore" href="#/explorar"><svg><use href="#i-compass"/></svg><span data-i18n="nav.explore">Explorar</span></a>
+      <a class="nav-item" data-nav="library" href="#/biblioteca"><svg><use href="#i-books"/></svg><span data-i18n="nav.library">Minha biblioteca</span></a>
+      <a class="nav-item" data-nav="profile" href="#/perfil"><svg><use href="#i-user"/></svg><span data-i18n="nav.profile">Perfil</span></a>
+      <a class="nav-item" data-nav="settings" href="#/ajustes"><svg><use href="#i-sliders"/></svg><span data-i18n="nav.settings">Configurações</span></a>
+    </nav>
+    <div class="side-foot">
+      <div class="lang-switch" role="group" aria-label="Idioma / Language">
+        <svg aria-hidden="true"><use href="#i-globe"/></svg>
+        <button type="button" data-action="set-lang" data-lang="pt" lang="pt">PT</button>
+        <button type="button" data-action="set-lang" data-lang="en" lang="en">EN</button>
+      </div>
+      <div class="account-box" id="account-box"></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <a class="logo" href="#/" aria-label="Freadom Reading — início">
+        <img class="logo-img" src="img/logo-mark.png" alt="" width="240" height="141">
+      <span class="logo-text"><span class="wordmark"><span class="wm-a">Freadom</span><span class="wm-b">_Reading</span></span></span>
+      </a>
+      <div class="topbar-actions">
+        <a class="icon-btn" href="#/busca" data-i18n-aria="search.open"><svg><use href="#i-search"/></svg></a>
+        <button class="btn ghost small" id="topbar-account" data-action="open-auth">Entrar</button>
+      </div>
+    </header>
+
+    <main class="content" id="main" tabindex="-1">
+
+      <!-- ============================= INÍCIO ============================= -->
+      <section id="view-home" class="view">
+        <div class="hero">
+          <h1 data-i18n="home.title">Qual livro é este?</h1>
+          <p class="subtitle" data-i18n="home.subtitle"></p>
+
+          <form class="page-input" id="identify-form">
+            <label for="identify-input" class="sr-only" data-i18n="home.excerptLabel">Trecho do livro</label>
+            <textarea id="identify-input" rows="5" maxlength="5000" data-i18n-ph="home.excerptPh"></textarea>
+            <div class="page-input-foot">
+              <span class="hint" id="identify-count"></span>
+              <button class="btn" type="submit" id="identify-btn"><svg><use href="#i-search"/></svg><span data-i18n="home.identify">Identificar livro</span></button>
+            </div>
+          </form>
+
+          <div class="alt-search">
+            <span class="alt-label" data-i18n="home.noExcerpt">Não tem o trecho?</span>
+            <a class="chip-btn" href="#/busca"><svg><use href="#i-type"/></svg><span data-i18n="home.byTitle">Título ou autor</span></a>
+            <button class="chip-btn" data-action="open-modal" data-modal="modal-description"><svg><use href="#i-pen"/></svg><span data-i18n="home.byDescription">Descrever a história</span></button>
+            <button class="chip-btn" data-action="open-modal" data-modal="modal-photo"><svg><use href="#i-camera"/></svg><span data-i18n="home.byPhoto">Foto da página ou capa</span></button>
+          </div>
+        </div>
+
+        <div id="identify-result" aria-live="polite"></div>
+
+        <!-- Área pessoal: continuar lendo, favoritos, biblioteca, destaques (montada pelo JS) -->
+        <div id="home-personal"></div>
+
+        <div class="section-title">
+          <h2 data-i18n="home.recognizes">O que o Freadom reconhece</h2>
+          <span class="section-note" id="catalog-note"></span>
+        </div>
+        <div id="catalog-books" class="book-row"></div>
+
+        <div class="section-title"><h2 data-i18n="home.genres">Gêneros</h2></div>
+        <div class="genre-scroll" id="genre-scroll-home"></div>
+
+        <div class="section-title"><h2 data-i18n="home.classics">Clássicos para começar</h2></div>
+        <div id="popular-books" class="book-row"></div>
+      </section>
+
+      <!-- ============================= EXPLORAR ============================= -->
+      <section id="view-explore" class="view">
+        <div class="section-title first"><h1 data-i18n="explore.title">Explorar</h1></div>
+        <form class="search-box" data-form="search" role="search" aria-label="Buscar livros" data-i18n-aria="search.open">
+          <svg aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="search" name="q" maxlength="200" data-i18n-ph="search.placeholder" data-i18n-aria="search.open" autocomplete="off">
+          <button class="btn" type="submit" data-i18n="search.submit">Buscar</button>
+        </form>
+        <h2 class="sub-title" data-i18n="explore.genres">Por gênero</h2>
+        <div class="genre-scroll" id="genre-scroll-explore"></div>
+        <div id="explore-results" class="book-grid"></div>
+      </section>
+
+      <!-- ============================= BUSCA ============================= -->
+      <section id="view-search" class="view">
+        <form class="search-box" id="search-form" data-form="search" role="search" aria-label="Buscar livros" data-i18n-aria="search.open">
+          <svg aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="search" name="q" id="search-input" maxlength="500" data-i18n-ph="search.placeholder" data-i18n-aria="search.open" autocomplete="off">
+          <button class="btn" type="submit" data-i18n="search.submit">Buscar</button>
+        </form>
+        <div class="filter-row" role="group" id="search-lang-filter">
+          <button type="button" class="filter-chip" data-action="search-lang" data-lang="" data-i18n="search.langAll">Todos os idiomas</button>
+          <button type="button" class="filter-chip" data-action="search-lang" data-lang="pt" data-i18n="search.langPt">Em português</button>
+          <button type="button" class="filter-chip" data-action="search-lang" data-lang="en" data-i18n="search.langEn">Em inglês</button>
+        </div>
+        <div class="section-title first"><h1 id="search-title"></h1></div>
+        <h2 class="sr-only" data-i18n="search.results">Resultados</h2>
+        <div id="search-results" class="book-grid"></div>
+      </section>
+
+      <!-- ============================= DETALHES ============================= -->
+      <section id="view-details" class="view">
+        <button class="btn ghost small back-btn" data-action="back"><svg><use href="#i-back"/></svg><span data-i18n="reader.back">Voltar</span></button>
+        <div id="details-content"></div>
+      </section>
+
+      <!-- ============================= LEITOR ============================= -->
+      <section id="view-reader" class="view">
+        <div class="reader-wrap">
+          <div class="reader-toolbar">
+            <div class="group grow">
+              <button class="icon-btn" data-action="back" data-i18n-aria="reader.back"><svg><use href="#i-back"/></svg></button>
+              <div class="reader-heading">
+                <h1 id="reader-title"></h1>
+                <span id="reader-author"></span>
+              </div>
+            </div>
+            <div class="group" role="group" data-i18n-aria="reader.tools">
+              <button class="icon-btn text" id="reader-translate-btn" data-action="reader-translate" hidden><svg><use href="#i-translate"/></svg><span></span></button>
+              <button class="icon-btn" id="reader-bookmark-btn" data-action="reader-bookmark" aria-pressed="false"><svg><use href="#i-bookmark"/></svg></button>
+              <button class="icon-btn" id="reader-notes-btn" data-action="open-notes" data-i18n-aria="reader.notes" data-i18n-title="reader.notes"><svg><use href="#i-notes"/></svg><span class="badge" id="reader-notes-count" hidden></span></button>
+              <span class="tool-sep" aria-hidden="true"></span>
+              <button class="icon-btn text" data-action="font" data-delta="-1" data-i18n-aria="reader.fontDown">A−</button>
+              <button class="icon-btn text" data-action="font" data-delta="1" data-i18n-aria="reader.fontUp">A+</button>
+              <button class="icon-btn text" data-action="reader-width" data-i18n-aria="reader.width">↔</button>
+              <button class="icon-btn text" data-action="reader-paper" id="reader-paper-btn" data-i18n-aria="reader.paperLabel"></button>
+            </div>
+          </div>
+          <div id="reader-notice"></div>
+          <article id="reader-page" class="reader-page" tabindex="0"></article>
+          <div class="reader-nav">
+            <button class="btn secondary small" data-action="reader-prev"><svg><use href="#i-back"/></svg><span data-i18n="reader.prev">Anterior</span></button>
+            <span id="reader-page-indicator" class="reader-indicator"></span>
+            <button class="btn secondary small" data-action="reader-next"><span data-i18n="reader.next">Próxima</span><svg><use href="#i-next"/></svg></button>
+          </div>
+          <div class="progress-bar-wrap"><div id="reader-progress-fill" class="progress-bar-fill"></div></div>
+          <p id="reader-progress-label" class="reader-progress-label"></p>
+        </div>
+
+        <!-- Painel lateral: marcadores e destaques do livro aberto -->
+        <aside class="drawer" id="notes-drawer" aria-labelledby="notes-h" hidden>
+          <div class="drawer-head">
+            <h2 id="notes-h" data-i18n="notes.title">Marcadores e destaques</h2>
+            <button class="modal-close" data-action="close-notes" data-i18n-aria="notes.close"><svg><use href="#i-close"/></svg></button>
+          </div>
+          <div class="drawer-body" id="notes-body"></div>
+        </aside>
+      </section>
+
+      <!-- ============================= BIBLIOTECA ============================= -->
+      <section id="view-library" class="view">
+        <div class="section-title first"><h1 data-i18n="lib.title">Minha biblioteca</h1></div>
+        <div class="tabs" role="tablist">
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="favoritos"><span data-i18n="lib.favorites">Favoritos</span> <span class="count" data-count="favoritos"></span></button>
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="quero_ler"><span data-i18n="lib.want">Quero ler</span> <span class="count" data-count="quero_ler"></span></button>
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="lendo"><span data-i18n="lib.reading">Lendo</span> <span class="count" data-count="lendo"></span></button>
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="concluido"><span data-i18n="lib.done">Concluídos</span> <span class="count" data-count="concluido"></span></button>
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="anotacoes"><span data-i18n="lib.notes">Anotações</span> <span class="count" data-count="anotacoes"></span></button>
+        </div>
+        <h2 class="sr-only" data-i18n="lib.books">Livros</h2>
+        <div id="library-guest-note"></div>
+        <div id="library-content" class="book-grid" role="tabpanel"></div>
+      </section>
+
+      <!-- ============================= LINKS DO E-MAIL ============================= -->
+      <section id="view-account" class="view">
+        <div class="account-card" id="account-action"></div>
+      </section>
+
+      <!-- ============================= PERFIL ============================= -->
+      <section id="view-profile" class="view">
+        <div class="section-title first"><h1 data-i18n="profile.title">Meu perfil</h1></div>
+        <div id="profile-content"></div>
+      </section>
+
+      <!-- ============================= CONFIGURAÇÕES ============================= -->
+      <section id="view-settings" class="view">
+        <div class="section-title first"><h1 data-i18n="settings.title">Configurações</h1></div>
+        <div id="settings-sync-note"></div>
+        <form class="settings-grid" id="settings-form">
+          <fieldset class="panel">
+            <legend data-i18n="settings.language">Idioma</legend>
+            <div class="form-group">
+              <label for="setting-language" data-i18n="settings.appLanguage">Idioma do app</label>
+              <select id="setting-language" name="language">
+                <option value="pt">Português</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <label class="check-row">
+              <input type="checkbox" id="setting-translate" name="translate_books">
+              <span><strong data-i18n="settings.translateBooks"></strong><small data-i18n="settings.translateHint"></small></span>
+            </label>
+          </fieldset>
+          <fieldset class="panel">
+            <legend data-i18n="settings.appearance">Aparência</legend>
+            <div class="form-group">
+              <label for="setting-appearance" data-i18n="settings.mode">Modo</label>
+              <select id="setting-appearance" name="appearance">
+                <option value="auto" data-i18n="settings.mode.auto"></option>
+                <option value="claro" data-i18n="settings.mode.claro"></option>
+                <option value="escuro" data-i18n="settings.mode.escuro"></option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="setting-theme" data-i18n="settings.theme">Tema de cores</label>
+              <select id="setting-theme" name="theme">
+                <option value="literatura" data-i18n="theme.literatura"></option>
+                <option value="biologia" data-i18n="theme.biologia"></option>
+                <option value="terror" data-i18n="theme.terror"></option>
+                <option value="romance" data-i18n="theme.romance"></option>
+                <option value="fantasia" data-i18n="theme.fantasia"></option>
+                <option value="ficcao" data-i18n="theme.ficcao"></option>
+                <option value="historia" data-i18n="theme.historia"></option>
+                <option value="misterio" data-i18n="theme.misterio"></option>
+              </select>
+            </div>
+          </fieldset>
+          <fieldset class="panel">
+            <legend data-i18n="settings.reading">Leitura</legend>
+            <div class="form-group">
+              <label for="setting-font-size"><span data-i18n="settings.fontSize">Tamanho da fonte</span> <output id="out-font-size"></output></label>
+              <input type="range" id="setting-font-size" name="font_size" min="12" max="32" step="1">
+            </div>
+            <div class="form-group">
+              <label for="setting-spacing"><span data-i18n="settings.spacing">Espaçamento entre linhas</span> <output id="out-spacing"></output></label>
+              <input type="range" id="setting-spacing" name="spacing" min="1" max="2.5" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="setting-text-width" data-i18n="settings.textWidth">Largura do texto</label>
+              <select id="setting-text-width" name="text_width">
+                <option value="estreito" data-i18n="settings.width.estreito"></option>
+                <option value="medio" data-i18n="settings.width.medio"></option>
+                <option value="largo" data-i18n="settings.width.largo"></option>
+              </select>
+            </div>
+            <p class="reading-preview" id="reading-preview" data-i18n="settings.preview"></p>
+          </fieldset>
+        </form>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<nav class="bottom-nav" aria-label="Principal" data-i18n-aria="nav.main">
+  <a class="nav-item" data-nav="home" href="#/"><svg><use href="#i-home"/></svg><span data-i18n="nav.home">Início</span></a>
+  <a class="nav-item" data-nav="explore" href="#/explorar"><svg><use href="#i-compass"/></svg><span data-i18n="nav.explore">Explorar</span></a>
+  <a class="nav-item" data-nav="library" href="#/biblioteca"><svg><use href="#i-books"/></svg><span data-i18n="nav.libraryShort">Biblioteca</span></a>
+  <a class="nav-item" data-nav="profile" href="#/perfil"><svg><use href="#i-user"/></svg><span data-i18n="nav.profile">Perfil</span></a>
+  <a class="nav-item" data-nav="settings" href="#/ajustes"><svg><use href="#i-sliders"/></svg><span data-i18n="nav.settingsShort">Ajustes</span></a>
+</nav>
+
+<!-- Menu flutuante do sublinhado (aparece ao selecionar texto no leitor) -->
+<div class="hl-pop" id="hl-pop" role="toolbar" data-i18n-aria="hl.colors" hidden>
+  <button type="button" class="swatch c-yellow" data-action="hl-color" data-color="yellow" data-i18n-aria="hl.yellow" data-i18n-title="hl.yellow"></button>
+  <button type="button" class="swatch c-green" data-action="hl-color" data-color="green" data-i18n-aria="hl.green" data-i18n-title="hl.green"></button>
+  <button type="button" class="swatch c-pink" data-action="hl-color" data-color="pink" data-i18n-aria="hl.pink" data-i18n-title="hl.pink"></button>
+  <button type="button" class="swatch c-blue" data-action="hl-color" data-color="blue" data-i18n-aria="hl.blue" data-i18n-title="hl.blue"></button>
+  <button type="button" class="pop-remove" data-action="hl-remove" data-i18n-aria="hl.remove" data-i18n-title="hl.remove" hidden><svg><use href="#i-trash"/></svg></button>
+</div>
+
+<!-- ============================= MODAIS ============================= -->
+<div class="overlay" id="modal-description" role="dialog" aria-modal="true" aria-labelledby="md-h">
+  <form class="modal" data-form="description">
+    <button type="button" class="modal-close" data-action="close-modal" data-i18n-aria="modal.close"><svg><use href="#i-close"/></svg></button>
+    <h3 id="md-h" data-i18n="desc.title">Descreva a história</h3>
+    <p class="hint" data-i18n="desc.hint"></p>
+    <textarea name="q" rows="4" maxlength="500" data-i18n-ph="desc.ph" required></textarea>
+    <button class="btn" type="submit"><svg><use href="#i-search"/></svg><span data-i18n="desc.submit">Buscar livros</span></button>
+  </form>
+</div>
+
+<div class="overlay" id="modal-photo" role="dialog" aria-modal="true" aria-labelledby="mp-h">
+  <div class="modal">
+    <button type="button" class="modal-close" data-action="close-modal" data-i18n-aria="modal.close"><svg><use href="#i-close"/></svg></button>
+    <h3 id="mp-h" data-i18n="photo.title">Foto da página ou da capa</h3>
+    <p class="hint" data-i18n="photo.hint"></p>
+    <label class="upload-zone" for="photo-input">
+      <svg><use href="#i-camera"/></svg>
+      <span><span data-i18n="photo.choose">Escolher imagem</span> <small data-i18n="photo.formats"></small></span>
+    </label>
+    <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp" hidden>
+    <img id="photo-preview" class="preview-img" data-i18n-aria="photo.alt" alt="" hidden>
+    <div id="photo-status"></div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-delete" role="dialog" aria-modal="true" aria-labelledby="mdel-h">
+  <form class="modal" id="delete-form" novalidate>
+    <button type="button" class="modal-close" data-action="close-modal" data-i18n-aria="modal.close"><svg><use href="#i-close"/></svg></button>
+    <h3 id="mdel-h" data-i18n="del.title">Excluir conta</h3>
+    <p class="hint" data-i18n="del.hint"></p>
+    <div class="form-group">
+      <label for="delete-password" data-i18n="del.password">Digite sua senha para confirmar</label>
+      <input type="password" id="delete-password" autocomplete="current-password" required>
+    </div>
+    <p class="form-error" id="delete-error" role="alert"></p>
+    <button class="btn danger full" type="submit" data-i18n="del.submit">Excluir minha conta para sempre</button>
+  </form>
+</div>
+
+<div class="overlay" id="modal-auth" role="dialog" aria-modal="true" aria-labelledby="ma-h">
+  <form class="modal" id="auth-form" novalidate>
+    <button type="button" class="modal-close" data-action="close-modal" data-i18n-aria="modal.close"><svg><use href="#i-close"/></svg></button>
+    <h3 id="ma-h"></h3>
+    <p class="hint" data-i18n="auth.hint"></p>
+    <div class="form-group" id="auth-name-group" hidden>
+      <label for="auth-name" data-i18n="auth.name">Nome</label>
+      <input type="text" id="auth-name" name="name" autocomplete="name" maxlength="80">
+    </div>
+    <div class="form-group">
+      <label for="auth-email" data-i18n="auth.email">E-mail</label>
+      <input type="email" id="auth-email" name="email" autocomplete="email" required>
+    </div>
+    <div class="form-group" id="auth-password-group">
+      <label for="auth-password" data-i18n="auth.password">Senha</label>
+      <input type="password" id="auth-password" name="password" autocomplete="current-password" minlength="6" required>
+      <button type="button" class="link small-link" id="auth-forgot-btn" data-action="auth-forgot" data-i18n="auth.forgot">Esqueci minha senha</button>
+    </div>
+    <p class="form-error" id="auth-error" role="alert"></p>
+    <p class="form-ok" id="auth-info" role="status"></p>
+    <button class="btn full" type="submit" id="auth-submit"></button>
+    <p class="auth-switch"><span id="auth-switch-text"></span> <button type="button" class="link" data-action="auth-switch" id="auth-switch-btn"></button></p>
+  </form>
+</div>
+
+<!-- Tesseract.js (OCR) é carregado sob demanda, só quando a busca por foto é usada -->
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

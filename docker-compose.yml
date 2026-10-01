@@ -1,0 +1,44 @@
+# Sobe o PostgreSQL local (com pg_trgm disponível) e, opcionalmente, a API.
+#   docker compose up -d db          -> só o banco (rode a API com uvicorn)
+#   docker compose up --build        -> banco + API em http://localhost:8000
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: freedom
+      POSTGRES_PASSWORD: freedom
+      POSTGRES_DB: freedom
+    # Só acessível da própria máquina (no EC2, o banco não fica exposto na internet).
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/scripts/create_test_db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U freedom"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql+psycopg://freedom:freedom@db:5432/freedom
+      # Sem JWT_SECRET definido, a API usa uma chave temporária (logins expiram ao reiniciar).
+      JWT_SECRET: ${JWT_SECRET:-troque}
+      TRANSLATION_EMAIL: ${TRANSLATION_EMAIL:-}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Freadom Reading <no-reply@freedom.local>}
+    ports: ["8000:8000"]
+    volumes:
+      - bookcache:/app/backend/data   # livros baixados sobrevivem a um rebuild
+
+
+volumes:
+  pgdata:
+  bookcache:
