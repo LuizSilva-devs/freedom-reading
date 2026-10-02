@@ -20,6 +20,8 @@ Esta é a versão fullstack pessoal, construída sobre o frontend estático do g
 - **Leitor** de obras em domínio público, com páginas, marcadores, sublinhados coloridos com nota, tamanho de fonte e papel.
 - **Tradução automática** de livros em inglês ao ler com o site em português (e vice-versa), com cache no banco.
 - **Busca de livros** no catálogo da Open Library, com detalhes e capa.
+- **Identifica até livros que não estão no acervo** (modernos ou pagos): procura o trecho no Google Books e no Internet Archive e mostra onde comprar, emprestar ou ler.
+- **Mais fontes de livros**: importação da **Wikisource** e **envio dos seus próprios arquivos** (.txt, .epub, .pdf), que ficam particulares.
 - **Biblioteca**: favoritos, "continuar lendo" e progresso.
 - **Conta**: cadastro, confirmação de e-mail, "esqueci minha senha", troca de senha, sair de todos os dispositivos e exclusão da conta. Sem conta, tudo funciona no navegador e é importado ao entrar.
 - Interface em **português e inglês**.
@@ -31,7 +33,7 @@ Esta é a versão fullstack pessoal, construída sobre o frontend estático do g
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2, Pydantic v2, bcrypt, JWT |
 | Banco | PostgreSQL 14+ com a extensão `pg_trgm` |
 | Frontend | HTML, CSS e JavaScript puro (módulos ES), sem framework |
-| Testes e qualidade | pytest (67 testes), ruff, bandit, pip-audit, ESLint, Schemathesis, Playwright, axe-core |
+| Testes e qualidade | pytest (95 testes), ruff, bandit, pip-audit, ESLint, Schemathesis, Playwright, axe-core |
 | Infra | Docker / docker-compose, AWS (EC2 + RDS) |
 
 ```
@@ -48,9 +50,9 @@ freedom-reading/
 │   │   ├── routers/           # auth, identify, catalog, me, annotations
 │   │   └── services/          # matching (pg_trgm), gutenberg, openlibrary, translation, text_utils, cache
 │   ├── scripts/
-│   │   ├── ingest_gutenberg.py  # baixa e indexa livros no acervo
+│   │   ├── ingest_gutenberg.py  # coleção de ~70 clássicos (PT e EN) para o acervo
 │   │   └── test_matching.py     # calibra o SIMILARITY_THRESHOLD
-│   └── tests/                 # pytest (67 testes) + amostras offline
+│   └── tests/                 # pytest (95 testes) + amostras offline
 ├── frontend/
 │   ├── index.html
 │   ├── css/styles.css
@@ -75,7 +77,8 @@ pip install -r requirements.txt
 cp .env.example .env               # troque o JWT_SECRET
 
 # 3. Acervo de identificação (baixa do Project Gutenberg)
-python -m scripts.ingest_gutenberg              # Dom Casmurro, Brás Cubas, Alice, Pride and Prejudice
+python -m scripts.ingest_gutenberg              # coleção completa: ~70 clássicos em português e inglês
+python -m scripts.ingest_gutenberg --basico     # só 4 livros (rápido, para testar)
 python -m scripts.ingest_gutenberg 2701 84      # adicionar outros por ID
 
 # 4. Subir
@@ -137,6 +140,29 @@ python -m scripts.test_matching --samples 60
 
 Sorteia trechos do acervo, degrada (sem acentos, erros de digitação, cortes) e mostra acerto por threshold. Ajuste `SIMILARITY_THRESHOLD` no `.env`.
 
+## Acervo de identificação
+
+O acervo é o conjunto de livros que o Freadom reconhece por trecho. Ele começa com a coleção do script e cresce sozinho:
+
+- **Coleção inicial** (`python -m scripts.ingest_gutenberg`): cerca de 70 clássicos. Os em inglês têm IDs fixos do Gutenberg; os em português (Machado, Alencar, Eça, Aluísio Azevedo, Lima Barreto…) são localizados pelo título e autor no Gutendex na hora, e os que não existem no Gutenberg são avisados e pulados. Livros que já estão no acervo não são baixados de novo, então o comando pode ser repetido se a internet cair. `--lista` mostra a coleção sem baixar nada.
+- **Acervo que cresce com a leitura**: quando alguém abre no leitor um livro do Gutenberg que ainda não está no acervo, o servidor (que já baixou o texto para mostrar as páginas) indexa o livro em segundo plano. Na próxima identificação, ele já é reconhecido. A divisão em trechos é a mesma do leitor, então as páginas, os marcadores e os sublinhados não mudam de lugar. Textos muito curtos (menos de 20 trechos) ou maiores que `AUTO_INGEST_MAX_MB` ficam de fora; `AUTO_INGEST_ON_READ=false` desliga.
+- A página inicial mostra até 12 livros do acervo (primeiro os do idioma do site) e o link **Ver todos** abre a lista completa, com filtro por título/autor e idioma.
+
+## Outras fontes além do Gutenberg
+
+**1. Identificação fora do acervo (livros modernos ou pagos).** Quando o trecho não está no acervo (ou a confiança é baixa), o site chama `POST /api/identify/external`, que procura um pedaço do meio do trecho, como frase exata, em duas bases públicas ao mesmo tempo:
+
+- **Google Books**: busca no texto completo de milhões de livros, inclusive com direitos autorais. Sem chave funciona com uma cota diária menor; para mais, crie uma chave gratuita no Google Cloud e coloque em `GOOGLE_BOOKS_API_KEY`.
+- **Internet Archive** (pela Open Library): busca no texto dos livros digitalizados; muitos podem ser emprestados de graça. É mais lenta (10 a 30 s); `EXTERNAL_ARCHIVE=false` desliga.
+
+Nenhum texto desses livros é guardado: só título, autor, capa e um pedacinho do trecho. Para cada livro aparecem links de **onde comprar** (Google Play Livros quando está à venda, Amazon e Estante Virtual para usados), **onde ler ou emprestar** (Internet Archive, Google Books quando liberado), o botão **"Tenho o arquivo: adicionar à minha conta"** e, se o livro já estiver no acervo, **"ler no Freadom"**. Se uma das fontes estiver fora do ar, a outra continua funcionando. Limite: `EXTERNAL_SEARCHES_PER_HOUR` por IP.
+
+**2. Wikisource.** Biblioteca livre da Wikimedia, muito completa em português. Na página **Acervo → Adicionar mais livros**, quem tem conta procura a obra pelo título e clica em **Adicionar**: o servidor usa a API oficial do MediaWiki, segue os capítulos da obra na ordem, remove cabeçalhos de navegação e notas e indexa o texto. A importação roda em segundo plano (`GET /api/wikisource/jobs/{id}` mostra o progresso) e o livro entra no acervo **público**. Pelo terminal: `python -m scripts.ingest_gutenberg --wikisource "Senhora"`. A coleção inicial também usa a Wikisource para os clássicos em português que não estão no Gutenberg.
+
+**3. Seus arquivos (.txt, .epub, .pdf).** Em **Biblioteca → Meus arquivos** (ou pelo botão do resultado externo), quem tem conta envia um livro seu. O texto é extraído (EPUB na ordem do índice; PDF precisa ter texto, PDF escaneado não funciona) e o livro fica **particular**: só o dono lê, vê na lista e tem trechos comparados com ele. Apagar o arquivo (ou a conta) remove o texto, as traduções e as anotações dele. O arquivo original não é guardado. Limites: `UPLOAD_MAX_MB`, `UPLOADS_PER_USER`, `UPLOADS_PER_HOUR`.
+
+Livros que não vêm do Gutenberg recebem IDs a partir de 5.000.000 (de uma sequência do PostgreSQL, sem reaproveitar IDs apagados), então leitor, biblioteca, marcadores e tradução funcionam igual para todos.
+
 ## Como a identificação funciona
 
 1. **Ingestão**: o `.txt` do Gutenberg perde o cabeçalho/licença e é dividido em trechos do tamanho de parágrafos (diálogos curtos são agrupados; parágrafos gigantes, quebrados por frase). Cada trecho é salvo com o texto original e uma versão **normalizada** (minúsculas, sem acento, sem pontuação), indexada com **GIN + `gin_trgm_ops`**.
@@ -151,7 +177,11 @@ Cada identificação fica registrada em `search_logs` (tamanho do trecho, score,
 
 | Método | Rota | Descrição |
 |---|---|---|
-| POST | `/api/identify` | Identifica o livro de um trecho |
+| POST | `/api/identify` | Identifica o livro de um trecho (acervo público + seus arquivos) |
+| POST | `/api/identify/external` | Procura o trecho no Google Books e no Internet Archive; devolve onde comprar/emprestar |
+| GET | `/api/wikisource/search?q=&lang=` | Procura obras na Wikisource (marca as que já estão no acervo) |
+| POST / GET | `/api/wikisource/import` · `/api/wikisource/jobs/{id}` | Importa uma obra para o acervo (em segundo plano) / acompanha |
+| GET / POST / DELETE | `/api/me/uploads` · `/api/me/uploads/{id}` | Seus livros enviados (.txt, .epub, .pdf): listar / enviar / apagar |
 | GET | `/api/books` | Livros do acervo de identificação |
 | GET | `/api/search?q=&mode=&language=` | Acervo + Open Library (`mode`: text, phrase, description; `language`: pt, en) |
 | GET | `/api/details?key=` | Detalhes (`/works/OL…W` ou `gutenberg:<id>`) + versão gratuita |
@@ -253,5 +283,6 @@ Como o Learner Lab desliga ao fim da sessão, o IP público do EC2 muda — use 
 - Textos das obras: [Project Gutenberg](https://www.gutenberg.org) (obras em domínio público). O cabeçalho e a licença do Gutenberg são removidos na ingestão, e os textos baixados não fazem parte deste repositório.
 - Catálogo, capas e detalhes: [Open Library](https://openlibrary.org) · busca de versões gratuitas: [Gutendex](https://gutendex.com).
 - Tradução: [MyMemory](https://mymemory.translated.net) (padrão), LibreTranslate ou Amazon Translate.
+- Outras fontes: [Wikisource](https://wikisource.org) (textos em domínio público, via API do MediaWiki), [Google Books API](https://developers.google.com/books) e [Internet Archive](https://archive.org) (só identificação: nenhum texto desses livros é guardado). Os links de compra são buscas simples nas lojas, sem afiliação.
 - O código deste repositório está sob a licença [MIT](LICENSE).
 

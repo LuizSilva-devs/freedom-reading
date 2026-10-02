@@ -74,6 +74,7 @@ export function bookCardHTML(book, { isFavorite = false, inLibrary = false, stat
   const bid = register(book);
   const href = detailsHref(book.book_key);
   const tag = statusLabel ? `<span class="tag status">${esc(statusLabel)}</span>`
+    : book.private ? `<span class="tag private" title="${esc(t("book.yourFileTitle"))}">${icon("file")}${esc(t("book.yourFile"))}</span>`
     : book.in_catalog || book.source === "acervo" || String(book.book_key || "").startsWith("gutenberg:")
       ? `<span class="tag catalog" title="${esc(t("book.inCatalogTitle"))}">${icon("check")}${esc(t("book.inCatalog"))}</span>`
       : book.gutenberg_id ? `<span class="tag free">${esc(t("book.free"))}</span>` : "";

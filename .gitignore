@@ -2,6 +2,14 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Segredos: NUNCA publicar
+.env
 backend/.env
+
+# Livros baixados e cache
 backend/data/
+
 .pytest_cache/
+.ruff_cache/
+*.zip

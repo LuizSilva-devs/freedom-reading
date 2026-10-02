@@ -38,6 +38,10 @@
     <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3.5h12V21l-6-4.5L6 21z"/></symbol>
     <symbol id="i-notes" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h3"/></symbol>
     <symbol id="i-translate" viewBox="0 0 24 24"><path d="M3 5h9M7.5 3v2c0 4-2 7-4.5 8.5M5.5 9c1 2 3 3.5 5 4.5M12.5 21l4-10 4 10M14 17.5h5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v4h16v-4"/></symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2.5l2.2 11h10.6L20.5 7H7"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></symbol>
   </defs>
@@ -116,9 +120,9 @@
         <!-- Área pessoal: continuar lendo, favoritos, biblioteca, destaques (montada pelo JS) -->
         <div id="home-personal"></div>
 
-        <div class="section-title">
+        <div class="section-title wrap">
           <h2 data-i18n="home.recognizes">O que o Freadom reconhece</h2>
-          <span class="section-note" id="catalog-note"></span>
+          <span class="section-note"><span id="catalog-note"></span> <a class="link see-all" id="catalog-all" href="#/acervo" hidden></a></span>
         </div>
         <div id="catalog-books" class="book-row"></div>
 
@@ -127,6 +131,47 @@
 
         <div class="section-title"><h2 data-i18n="home.classics">Clássicos para começar</h2></div>
         <div id="popular-books" class="book-row"></div>
+      </section>
+
+      <!-- ============================= ACERVO ============================= -->
+      <section id="view-collection" class="view">
+        <div class="section-title first"><h1 data-i18n="coll.title">Acervo de identificação</h1><span class="section-note" id="collection-count"></span></div>
+        <p class="view-lead" data-i18n="coll.lead">Livros que o Freadom reconhece por trecho. Todo livro de domínio público aberto no leitor entra aqui automaticamente.</p>
+        <div class="search-box collection-filter">
+          <svg aria-hidden="true"><use href="#i-search"/></svg>
+          <label for="collection-filter" class="sr-only" data-i18n="coll.filterPh">Filtrar por título ou autor</label>
+          <input id="collection-filter" type="search" autocomplete="off" data-i18n-ph="coll.filterPh">
+        </div>
+        <div class="filter-row" role="group" id="collection-lang">
+          <button type="button" class="filter-chip" data-action="collection-lang" data-lang="" data-i18n="search.langAll">Todos os idiomas</button>
+          <button type="button" class="filter-chip" data-action="collection-lang" data-lang="pt" data-i18n="search.langPt">Em português</button>
+          <button type="button" class="filter-chip" data-action="collection-lang" data-lang="en" data-i18n="search.langEn">Em inglês</button>
+        </div>
+        <h2 class="sr-only" data-i18n="lib.books">Livros</h2>
+        <div id="collection-books" class="book-grid"></div>
+
+        <section class="add-books" aria-labelledby="add-books-h">
+          <h2 id="add-books-h" data-i18n="add.title">Adicionar mais livros</h2>
+          <div class="add-grid">
+            <div class="panel">
+              <h3 data-i18n="add.wsTitle">Da Wikisource</h3>
+              <p class="hint" data-i18n="add.wsHint">Biblioteca livre com obras em domínio público, muito completa em português. O livro importado entra no acervo para todo mundo.</p>
+              <form class="inline-form" id="ws-form" role="search">
+                <label class="sr-only" for="ws-q" data-i18n="add.wsPh">Título da obra</label>
+                <input type="text" id="ws-q" name="q" maxlength="200" data-i18n-ph="add.wsPh" required>
+                <label class="sr-only" for="ws-lang" data-i18n="add.wsLang">Idioma</label>
+                <select id="ws-lang" name="lang"><option value="pt">PT</option><option value="en">EN</option></select>
+                <button class="btn" type="submit" data-i18n="search.submit">Buscar</button>
+              </form>
+              <div id="ws-results" aria-live="polite"></div>
+            </div>
+            <div class="panel">
+              <h3 data-i18n="add.fileTitle">Do seu computador</h3>
+              <p class="hint" data-i18n="add.fileHint">Envie um livro seu em .txt, .epub ou .pdf. Ele fica particular: só você lê e só os seus trechos são comparados com ele.</p>
+              <button class="btn secondary" type="button" data-action="open-upload"><svg><use href="#i-upload"/></svg><span data-i18n="add.fileBtn">Enviar arquivo</span></button>
+            </div>
+          </div>
+        </section>
       </section>
 
       <!-- ============================= EXPLORAR ============================= -->
@@ -217,6 +262,7 @@
           <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="lendo"><span data-i18n="lib.reading">Lendo</span> <span class="count" data-count="lendo"></span></button>
           <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="concluido"><span data-i18n="lib.done">Concluídos</span> <span class="count" data-count="concluido"></span></button>
           <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="anotacoes"><span data-i18n="lib.notes">Anotações</span> <span class="count" data-count="anotacoes"></span></button>
+          <button class="tab-btn" role="tab" data-action="lib-tab" data-tab="arquivos"><span data-i18n="lib.files">Meus arquivos</span> <span class="count" data-count="arquivos"></span></button>
         </div>
         <h2 class="sr-only" data-i18n="lib.books">Livros</h2>
         <div id="library-guest-note"></div>
@@ -358,6 +404,37 @@
     </div>
     <p class="form-error" id="delete-error" role="alert"></p>
     <button class="btn danger full" type="submit" data-i18n="del.submit">Excluir minha conta para sempre</button>
+  </form>
+</div>
+
+<div class="overlay" id="modal-upload" role="dialog" aria-modal="true" aria-labelledby="mu-h">
+  <form class="modal" id="upload-form" novalidate>
+    <button type="button" class="modal-close" data-action="close-modal" data-i18n-aria="modal.close"><svg><use href="#i-close"/></svg></button>
+    <h3 id="mu-h" data-i18n="up.title">Adicionar livro à sua conta</h3>
+    <p class="hint" data-i18n="up.hint">O livro fica particular: só você lê e só os seus trechos são comparados com ele. Envie apenas arquivos que você tem direito de usar.</p>
+    <label class="upload-zone" for="up-file">
+      <svg><use href="#i-file"/></svg>
+      <span><span id="up-file-name" data-i18n="up.choose">Escolher arquivo</span> <small data-i18n="up.formats">.txt, .epub ou .pdf com texto · até 20 MB</small></span>
+    </label>
+    <input type="file" id="up-file" name="file" accept=".txt,.epub,.pdf,text/plain,application/epub+zip,application/pdf" hidden>
+    <div class="form-group">
+      <label for="up-title" data-i18n="up.titleLabel">Título</label>
+      <input type="text" id="up-title" name="title" maxlength="300" data-i18n-ph="up.titlePh">
+    </div>
+    <div class="form-group">
+      <label for="up-author" data-i18n="up.authorLabel">Autor</label>
+      <input type="text" id="up-author" name="author" maxlength="300" data-i18n-ph="up.authorPh">
+    </div>
+    <div class="form-group">
+      <label for="up-language" data-i18n="up.langLabel">Idioma do livro</label>
+      <select id="up-language" name="language">
+        <option value="" data-i18n="up.langAuto">Detectar automaticamente</option>
+        <option value="pt" data-i18n="up.langPt">Português</option>
+        <option value="en" data-i18n="up.langEn">Inglês</option>
+      </select>
+    </div>
+    <p class="form-error" id="up-error" role="alert"></p>
+    <button class="btn full" type="submit" id="up-submit"><svg><use href="#i-upload"/></svg><span data-i18n="up.submit">Enviar livro</span></button>
   </form>
 </div>
 

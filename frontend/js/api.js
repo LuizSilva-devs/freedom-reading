@@ -39,13 +39,14 @@ export async function request(path, { method = "GET", body, params, signal } = {
     if (s) url += "?" + s;
   }
   const headers = { Accept: "application/json", "Accept-Language": getLang() };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = body instanceof FormData;   // envio de arquivo: o navegador monta o multipart
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   const token = auth.token;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let resp;
   try {
-    resp = await fetch(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal });
+    resp = await fetch(url, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body), signal });
   } catch (err) {
     if (err.name === "AbortError") throw err;
     throw new ApiError(t("err.network"), 0);
@@ -60,7 +61,8 @@ export async function request(path, { method = "GET", body, params, signal } = {
     // e a tela continuava mostrando a pessoa como logada depois de "sair de todos" em outro aparelho).
     const PUBLIC_AUTH = ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password",
                          "/api/auth/reset-password", "/api/auth/verify-email"];
-    const personal = path.startsWith("/api/me") || (path.startsWith("/api/auth/") && !PUBLIC_AUTH.includes(path));
+    const personal = path.startsWith("/api/me") || path.startsWith("/api/wikisource/import") || path.startsWith("/api/wikisource/jobs")
+      || (path.startsWith("/api/auth/") && !PUBLIC_AUTH.includes(path));
     if (resp.status === 401 && token && personal && auth.token === token) {
       auth.token = null;
       window.dispatchEvent(new CustomEvent("freedom:logout", { detail: { expired: true } }));
@@ -90,6 +92,13 @@ export const api = {
   // identificação e catálogo
   identify: (excerpt) => request("/api/identify", { method: "POST", body: { excerpt } }),
   catalog: () => request("/api/books"),
+  identifyExternal: (excerpt, signal) => request("/api/identify/external", { method: "POST", body: { excerpt }, signal }),
+  wikisourceSearch: (q, lang) => request("/api/wikisource/search", { params: { q, lang } }),
+  wikisourceImport: (lang, title) => request("/api/wikisource/import", { method: "POST", body: { lang, title } }),
+  wikisourceJob: (id) => request(`/api/wikisource/jobs/${encodeURIComponent(id)}`),
+  uploads: () => request("/api/me/uploads"),
+  uploadBook: (form) => request("/api/me/uploads", { method: "POST", body: form }),
+  deleteUpload: (gid) => request(`/api/me/uploads/${gid}`, { method: "DELETE" }),
   search: (q, { mode = "text", limit = 20, language, signal } = {}) =>
     request("/api/search", { params: { q, mode, limit, language }, signal }),
   details: (key) => request("/api/details", { params: { key } }),

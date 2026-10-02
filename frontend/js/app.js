@@ -37,6 +37,8 @@ const state = {
   identifying: false,
   pendingToken: null,         // token do link do e-mail (tirado da URL assim que a tela abre)
   accountResult: null,        // resultado da confirmação de e-mail, para redesenhar a tela sem perder o estado
+  uploads: null,              // livros enviados pela pessoa (aba "Meus arquivos")
+  userId: undefined,          // detecta troca de conta para limpar o que é particular
 };
 
 // Estado do leitor
@@ -86,7 +88,7 @@ async function changeLanguage(lang) {
    O índice salvo em history.state diz se há uma tela anterior DENTRO do app,
    para o botão "Voltar" não sair do site quando a pessoa abriu um link direto.
 ========================================================================= */
-const ROUTES = { "": "home", explorar: "explore", busca: "search", livro: "details", ler: "reader", biblioteca: "library",
+const ROUTES = { "": "home", acervo: "collection", explorar: "explore", busca: "search", livro: "details", ler: "reader", biblioteca: "library",
                  perfil: "profile", ajustes: "settings", "redefinir-senha": "account", "confirmar-email": "account" };
 let navIdx = 0;
 
@@ -123,7 +125,7 @@ function route({ keepScroll = false } = {}) {
   if (!keepScroll && (prevView !== rt.view || rt.view !== "reader")) window.scrollTo({ top: 0 });
 
   ({
-    home: renderHome, explore: renderExplore, search: () => renderSearch(rt.params),
+    home: renderHome, collection: renderCollection, explore: renderExplore, search: () => renderSearch(rt.params),
     details: () => renderDetails(rt.params.key), reader: () => openReader(rt.arg, rt.params),
     library: renderLibrary, profile: renderProfile, settings: renderSettings,
     account: () => renderAccountAction(location.hash.replace(/^#\/?/, "").split("?")[0], rt.params.token),
@@ -139,7 +141,8 @@ const cardFor = (b, opts = {}) => bookCardHTML(b, {
 
 function catalogToCard(b) {
   return { book_key: `gutenberg:${b.gutenberg_id}`, title: b.title, author: b.author, cover_url: b.cover_url,
-           gutenberg_id: b.gutenberg_id, in_catalog: true, source: "acervo", language: b.language };
+           gutenberg_id: b.gutenberg_id, in_catalog: true, source: b.private ? "meus-arquivos" : "acervo",
+           language: b.language, private: !!b.private };
 }
 
 const readerHref = (gid, key, page, extra = {}) =>
@@ -165,12 +168,53 @@ async function loadCatalogRow() {
   catch (err) { $("#catalog-books").innerHTML = `<div class="notice">${esc(err.message)}</div>`; }
 }
 
+const HOME_CATALOG_MAX = 12;
+const LOCAL_ID_START = 5_000_000;   // livros da Wikisource e arquivos enviados (não existem no Gutenberg)
+
+// Na página inicial: até 12 livros, primeiro os do idioma do site; o resto fica em "Ver todos".
 function paintCatalogRow() {
   const books = state.catalog;
+  const lang = store.settings.language;
   $("#catalog-note").textContent = !books.length ? "" : books.length === 1 ? t("home.catalogNote1") : t("home.catalogNote", { n: books.length });
+  const all = $("#catalog-all");
+  all.hidden = books.length <= HOME_CATALOG_MAX;
+  all.textContent = t("coll.seeAll");
+  const shown = [...books].sort((a, b) => (b.language === lang) - (a.language === lang)).slice(0, HOME_CATALOG_MAX);
   $("#catalog-books").innerHTML = books.length
-    ? books.map(b => cardFor(catalogToCard(b))).join("")
+    ? shown.map(b => cardFor(catalogToCard(b))).join("")
     : `<div class="notice">${t("home.catalogEmpty")}</div>`;
+}
+
+/* ---------------------------------------------------------------- acervo completo */
+const fold = (s) => (s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const collection = { lang: "", text: "" };
+
+async function renderCollection() {
+  $$("#collection-lang .filter-chip").forEach(c => {
+    const on = c.dataset.lang === collection.lang;
+    c.classList.toggle("active", on);
+    c.setAttribute("aria-pressed", on);
+  });
+  $("#collection-filter").value = collection.text;
+  if (state.route.params.add) setTimeout(() => $(".add-books")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  if (!state.catalog) {
+    $("#collection-books").innerHTML = skeletonRow(10);
+    try { state.catalog = await api.catalog(); }
+    catch (err) { $("#collection-books").innerHTML = `<div class="notice">${esc(err.message)}</div>`; return; }
+  }
+  paintCollection();
+}
+
+function paintCollection() {
+  const books = state.catalog || [];
+  const words = fold(collection.text).split(/\s+/).filter(Boolean);
+  const list = books.filter(b =>
+    (!collection.lang || b.language === collection.lang) &&
+    words.every(w => fold(`${b.title} ${b.author}`).includes(w)));
+  $("#collection-count").textContent = t("coll.count", { n: list.length, total: books.length });
+  $("#collection-books").innerHTML = !books.length
+    ? `<div class="notice">${t("home.catalogEmpty")}</div>`
+    : list.length ? list.map(b => cardFor(catalogToCard(b))).join("") : emptyState(t("coll.none"));
 }
 
 async function loadClassics() {
@@ -252,9 +296,11 @@ async function identify(text) {
   target.innerHTML = loading(t("identify.searching"));
   try {
     const res = await api.identify(excerpt);
-    state.lastIdentify = { res, query: excerpt };
+    state.lastIdentify = { res, query: excerpt, ext: null };
     target.innerHTML = renderMatches(res, excerpt);
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Não achou no acervo (ou achou com pouca confiança): procura sozinho em outras fontes.
+    if (!res.matches.length || res.message === "low_confidence") runExternal(excerpt);
   } catch (err) {
     state.lastIdentify = null;
     target.innerHTML = `<div class="notice">${esc(err.message)}</div>`;
@@ -265,6 +311,10 @@ async function identify(text) {
 }
 
 function renderMatches(res, query) {
+  return renderLocalMatches(res, query) + `<div id="external-result" class="external" aria-live="polite">${externalHTML(query)}</div>`;
+}
+
+function renderLocalMatches(res, query) {
   if (!res.catalog_size) {
     return `<div class="notice"><strong>${esc(t("identify.emptyCatalog"))}</strong> ${esc(t("identify.emptyCatalogText"))}</div>`;
   }
@@ -298,6 +348,204 @@ function renderMatches(res, query) {
     ${others.length ? `<div class="others"><h3>${esc(t("identify.others"))}</h3>
       ${others.map(o => `<a href="${detailsHref(`gutenberg:${o.book.gutenberg_id}`)}"><span>${esc(o.book.title)} — ${esc(o.book.author)}</span><span>${Math.round(o.score * 100)}%</span></a>`).join("")}
     </div>` : ""}`;
+}
+
+
+/* ------------------------------------------------ outras fontes (livros modernos ou pagos) */
+let extCtrl = null;
+
+function externalHTML(query) {
+  const li = state.lastIdentify;
+  if (li?.ext === "loading") return loading(t("ext.searching"));
+  if (li?.ext?.error) return `<div class="notice">${esc(li.ext.error)}</div>`;
+  if (li?.ext) return renderExternal(li.ext, query);
+  // Achou no acervo com boa confiança: a busca externa fica a um clique.
+  return li?.res?.matches?.length
+    ? `<p class="ext-more">${esc(t("ext.notThis"))} <button class="link" data-action="search-external">${esc(t("ext.btn"))}</button></p>` : "";
+}
+
+async function runExternal(excerpt) {
+  const li = state.lastIdentify;
+  if (!li) return;
+  extCtrl?.abort();
+  const ctrl = extCtrl = new AbortController();
+  li.ext = "loading";
+  paintExternal();
+  try {
+    const res = await api.identifyExternal(excerpt, ctrl.signal);
+    if (state.lastIdentify !== li) return;      // outro trecho foi identificado enquanto esperava
+    li.ext = res;
+  } catch (err) {
+    if (err.name === "AbortError" || state.lastIdentify !== li) return;
+    li.ext = { error: err.message };
+  }
+  paintExternal();
+}
+
+function paintExternal() {
+  const el = $("#external-result");
+  if (el && state.lastIdentify) el.innerHTML = externalHTML(state.lastIdentify.query);
+}
+
+function renderExternal(res, query) {
+  const failed = (res.failed || []).map(f => `<p class="hint">${esc(t("ext.failed." + f))}</p>`).join("");
+  if (!res.results.length) {
+    return `<div class="notice ext-none"><strong>${esc(t("ext.none"))}</strong> ${esc(t("ext.noneText"))}
+      <div class="ext-none-actions">
+        <button class="btn secondary small" data-action="open-upload">${icon("upload")}${esc(t("add.fileBtn"))}</button>
+        <a class="btn secondary small" href="#/acervo?add=1">${icon("plus")}${esc(t("add.wsTitle"))}</a>
+      </div>${failed}</div>`;
+  }
+  const linkBtn = (l) => `<a class="btn small ${l.kind === "buy" ? "secondary" : "ghost"}" href="${esc(/^https?:\/\//i.test(l.url) ? l.url : "#")}" target="_blank" rel="noopener noreferrer">
+      ${icon(l.kind === "buy" ? "cart" : l.kind === "info" ? "external" : "open")}${esc(l.label)}</a>`;
+  return `<section class="ext-section">
+    <h2>${esc(t("ext.title"))}</h2>
+    <p class="hint">${esc(t("ext.note"))}</p>
+    ${res.results.map(b => {
+      const buy = b.links.filter(l => l.kind === "buy");
+      const read = b.links.filter(l => l.kind !== "buy");
+      return `<article class="ext-card">
+        ${coverHTML({ title: b.title, author: b.author, cover_url: b.cover_url }, "small")}
+        <div class="ext-body">
+          <h3>${esc(b.title)}</h3>
+          <p class="match-author">${esc(b.author || t("book.unknownAuthor"))}${b.year ? ` · ${esc(b.year)}` : ""}</p>
+          <p class="ext-tags"><span class="tag">${esc(t("ext.src." + b.source))}</span>${b.public_domain ? `<span class="tag free">${esc(t("ext.publicDomain"))}</span>` : ""}</p>
+          ${b.snippet ? `<blockquote class="quote small">…${highlight(b.snippet, query)}…</blockquote>` : ""}
+          ${buy.length ? `<div class="ext-links"><span class="ext-label">${esc(t("ext.buy"))}</span>${buy.map(linkBtn).join("")}</div>` : ""}
+          ${read.length ? `<div class="ext-links"><span class="ext-label">${esc(t("ext.borrow"))}</span>${read.map(linkBtn).join("")}</div>` : ""}
+          ${b.catalog_gutenberg_id ? `<div class="ext-links"><a class="btn small" href="${detailsHref(`gutenberg:${b.catalog_gutenberg_id}`)}">${icon("check")}${esc(t("ext.inFreadom"))}</a></div>` : ""}
+          <div class="ext-actions">
+            <button class="link" data-action="open-upload" data-title="${esc(b.title)}" data-author="${esc(b.author)}">${icon("upload")}${esc(t("ext.haveFile"))}</button>
+            ${b.public_domain && !b.catalog_gutenberg_id ? `<a class="link" href="${searchHash(b.title, "text")}">${icon("search")}${esc(t("ext.findFree"))}</a>` : ""}
+          </div>
+        </div>
+      </article>`;
+    }).join("")}
+    ${failed}
+  </section>`;
+}
+
+/* ------------------------------------------------ enviar arquivo (livro particular) */
+function openUpload({ title = "", author = "" } = {}) {
+  if (store.isGuest) {
+    toast(t("up.loginNeeded"));
+    setAuthMode("login");
+    openModal("modal-auth");
+    return;
+  }
+  const form = $("#upload-form");
+  form.reset();
+  $("#up-title").value = title;
+  $("#up-author").value = author;
+  $("#up-file-name").textContent = t("up.choose");
+  $("#up-error").textContent = "";
+  openModal("modal-upload");
+}
+
+const UPLOAD_EXT = /\.(txt|epub|pdf)$/i;
+async function submitUpload(e) {
+  e.preventDefault();
+  const form = e.target;
+  const file = $("#up-file").files[0];
+  const errEl = $("#up-error");
+  errEl.textContent = "";
+  if (!file) { errEl.textContent = t("up.pickFile"); return; }
+  if (!UPLOAD_EXT.test(file.name)) { errEl.textContent = t("up.badExt"); return; }
+  if (file.size > 20 * 1024 * 1024) { errEl.textContent = t("up.tooBig"); return; }
+  const btn = $("#up-submit");
+  const label = $("span", btn);
+  btn.disabled = true;
+  label.textContent = t("up.sending");
+  try {
+    const book = await api.uploadBook(new FormData(form));
+    closeModal("modal-upload");
+    toast(t("up.done", { title: book.title }), "check");
+    state.catalog = null;
+    state.uploads = null;
+    go(detailsHref(`gutenberg:${book.gutenberg_id}`));
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    label.textContent = t("up.submit");
+  }
+}
+
+async function loadUploads() {
+  try { state.uploads = await api.uploads(); }
+  catch (err) { state.uploads = { error: err.message }; }
+  if (state.route.view === "library") renderLibrary();
+}
+
+async function deleteUpload(gid, title) {
+  if (!confirm(t("lib.deleteConfirm", { title }))) return;
+  try {
+    await api.deleteUpload(gid);
+    toast(t("lib.fileDeleted"));
+    state.catalog = null;
+    state.uploads = null;
+    await store.loadServer().catch(() => {});
+    store.emit("all");
+    renderLibrary();
+  } catch (err) { toast(err.message); }
+}
+
+/* ------------------------------------------------ Wikisource (acervo) */
+const wsJobs = new Map();   // título -> estado da importação, para redesenhar a lista
+
+async function searchWikisource(q, lang) {
+  const box = $("#ws-results");
+  box.innerHTML = loading(t("ws.searching"));
+  try {
+    const results = await api.wikisourceSearch(q, lang);
+    box.dataset.lang = lang;
+    state.wsResults = results;
+    paintWikisource();
+  } catch (err) { box.innerHTML = `<div class="notice">${esc(err.message)}</div>`; }
+}
+
+function paintWikisource() {
+  const box = $("#ws-results");
+  const results = state.wsResults || [];
+  if (!results.length) { box.innerHTML = `<p class="hint">${esc(t("ws.none"))}</p>`; return; }
+  box.innerHTML = `<ul class="ws-list">${results.map(w => {
+    const job = wsJobs.get(`${w.lang}:${w.title}`);
+    const gid = w.gutenberg_id || job?.book?.gutenberg_id;
+    let action;
+    if (gid) action = `<a class="btn small secondary" href="${detailsHref(`gutenberg:${gid}`)}">${icon("check")}${esc(t("ws.open"))}</a>`;
+    else if (job && (job.status === "queued" || job.status === "running"))
+      action = `<span class="ws-status">${esc(job.total ? t("ws.importing", { d: job.done, t: job.total }) : t("ws.queued"))}</span>`;
+    else action = `<button class="btn small" data-action="ws-import" data-title="${esc(w.title)}" data-lang="${esc(w.lang)}">${icon("plus")}${esc(t("ws.add"))}</button>`;
+    const err = job?.status === "error" ? `<p class="form-error">${esc(t("ws.err." + job.error))}</p>` : "";
+    return `<li><div><a href="${esc(w.url)}" target="_blank" rel="noopener noreferrer"><strong>${esc(w.title)}</strong></a>
+        ${w.is_chapter ? `<span class="tag">${esc(t("ws.chapter"))}</span>` : ""}
+        ${w.snippet ? `<small>${esc(w.snippet)}…</small>` : ""}${err}</div>${action}</li>`;
+  }).join("")}</ul>`;
+}
+
+async function importWikisource(lang, title) {
+  if (store.isGuest) { toast(t("ws.loginNeeded")); setAuthMode("login"); openModal("modal-auth"); return; }
+  const key = `${lang}:${title}`;
+  try {
+    let job = await api.wikisourceImport(lang, title);
+    wsJobs.set(key, job);
+    paintWikisource();
+    while (job.status === "queued" || job.status === "running") {
+      await new Promise(res => setTimeout(res, 1500));
+      job = await api.wikisourceJob(job.id);
+      wsJobs.set(key, job);
+      if (state.route.view === "collection") paintWikisource();
+    }
+    if (job.status === "done") {
+      toast(t("ws.done", { title: job.book.title }), "check");
+      state.catalog = null;
+      if (state.route.view === "collection") renderCollection();
+    }
+  } catch (err) {
+    wsJobs.set(key, { status: "error", error: "unavailable" });
+    toast(err.message);
+  }
+  if (state.route.view === "collection") paintWikisource();
 }
 
 /* =========================================================================
@@ -398,8 +646,10 @@ function paintDetails() {
         <h1>${esc(book.title)}</h1>
         <p class="d-author">${esc(book.author || t("book.unknownAuthor"))}</p>
         <div class="detail-meta">
+          ${book.private ? `<span class="tag private" title="${esc(t("book.yourFileTitle"))}">${icon("file")}${esc(t("book.yourFile"))}</span>` : ""}
           ${book.in_catalog ? `<span class="tag catalog">${icon("check")}${esc(t("book.recognized"))}</span>` : ""}
-          ${free ? `<span class="tag free">${esc(t("book.freeReading"))}</span>` : ""}
+          ${book.source === "wikisource" && book.source_url ? `<a class="meta-chip" href="${esc(book.source_url)}" target="_blank" rel="noopener noreferrer">${icon("external")}${esc(t("book.fromWikisource"))}</a>` : ""}
+          ${free && !book.private ? `<span class="tag free">${esc(t("book.freeReading"))}</span>` : ""}
           ${bookLang === "pt" || bookLang === "en" ? `<span class="meta-chip">${esc(t("book.language." + bookLang))}</span>` : ""}
           ${translatable ? `<span class="meta-chip">${icon("translate")}${esc(t("reader.translateTo", { lang: t("lang.name." + store.settings.language) }))}</span>` : ""}
           ${book.year ? `<span class="meta-chip">${esc(String(book.year))}</span>` : ""}
@@ -412,6 +662,7 @@ function paintDetails() {
             : `<span class="unavailable">${esc(t("book.noFree"))}</span>`}
           <button class="btn ${fav ? "is-on" : "ghost"}" data-action="fav" data-bid="${bid}" aria-pressed="${fav}">${icon("heart")}${esc(t(fav ? "book.favorited" : "book.favorite"))}</button>
         </div>
+        ${free ? "" : whereToGetHTML(book)}
         <div class="detail-actions" style="margin-top:14px">
           <div class="status-select" role="group" aria-label="${esc(t("book.statusGroup"))}">
             ${STATUSES.map(k =>
@@ -422,6 +673,24 @@ function paintDetails() {
         ${annotationsBlock(book.book_key, t("book.yourNotes"))}
       </div>
     </div>`;
+}
+
+/** Livro sem versão gratuita (moderno/pago): onde comprar ou emprestar, ou adicionar o próprio arquivo. */
+function whereToGetHTML(book) {
+  const q = encodeURIComponent(`${book.title} ${(book.author || "").split(",")[0]}`.trim());
+  const stores = [
+    ["buy", "Amazon", `https://www.amazon.com.br/s?k=${q}&i=stripbooks`],
+    ["buy", "Estante Virtual (usados)", `https://www.estantevirtual.com.br/busca?q=${q}`],
+    ["buy", "Google Play Livros", `https://play.google.com/store/search?q=${q}&c=books`],
+    ["borrow", "Internet Archive (ler/emprestar)", `https://archive.org/search?query=${q}`],
+  ];
+  const btn = ([kind, label, url]) => `<a class="btn small ${kind === "buy" ? "secondary" : "ghost"}" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${icon(kind === "buy" ? "cart" : "open")}${esc(label)}</a>`;
+  return `<section class="where-to-get" aria-labelledby="wtg-h">
+    <h2 id="wtg-h">${esc(t("book.whereToGet"))}</h2>
+    <div class="ext-links"><span class="ext-label">${esc(t("ext.buy"))}</span>${stores.filter(x => x[0] === "buy").map(btn).join("")}</div>
+    <div class="ext-links"><span class="ext-label">${esc(t("ext.borrow"))}</span>${stores.filter(x => x[0] !== "buy").map(btn).join("")}</div>
+    <div class="ext-actions"><button class="link" data-action="open-upload" data-title="${esc(book.title)}" data-author="${esc((book.author || "").split(",")[0])}">${icon("upload")}${esc(t("ext.haveFile"))}</button></div>
+  </section>`;
 }
 
 /** Marcadores e destaques de um livro, como links para o leitor. */
@@ -463,6 +732,8 @@ async function openReader(gidRaw, params) {
   }
   r.gid = gid; r.key = key;
   if (params.orig) r.translateOn = false;
+  // Livro fora do acervo: o servidor vai indexá-lo agora; recarrega a lista na próxima visita.
+  if (state.catalog && !state.catalog.some(b => b.gutenberg_id === gid)) state.catalog = null;
 
   // Ir direto para um destaque: usa a versão (original/tradução) em que ele foi feito.
   if (params.hl) {
@@ -529,7 +800,7 @@ async function showReaderPage(page) {
     if (seq !== r.seq) return;
     r.painted = false;
     pageEl.innerHTML = `<div class="notice"><strong>${esc(t("reader.cantOpen"))}</strong> ${esc(err.message)}
-      <div><a class="btn secondary small" href="https://www.gutenberg.org/ebooks/${r.gid}" target="_blank" rel="noopener">${esc(t("reader.openGutenberg"))}</a></div></div>`;
+      ${r.gid < LOCAL_ID_START ? `<div><a class="btn secondary small" href="https://www.gutenberg.org/ebooks/${r.gid}" target="_blank" rel="noopener">${esc(t("reader.openGutenberg"))}</a></div>` : ""}</div>`;
   }
 }
 
@@ -814,6 +1085,20 @@ function renderLibrary() {
   const tab = state.libraryTab;
   const box = $("#library-content");
   box.classList.toggle("book-grid", tab !== "anotacoes");
+  const files = Array.isArray(state.uploads) ? state.uploads : null;
+  $("[data-count=arquivos]").textContent = files?.length || "";
+  if (!store.isGuest && state.uploads === null) { state.uploads = "loading"; loadUploads(); }
+
+  if (tab === "arquivos") {
+    const bar = `<div class="files-bar"><button class="btn small" data-action="open-upload">${icon("upload")}${esc(t("add.fileBtn"))}</button>
+      <span class="hint">${esc(t("add.fileHint"))}</span></div>`;
+    if (store.isGuest) { box.innerHTML = emptyState(t("lib.empty.arquivos"), t("lib.filesGuest"), `<button class="btn small" data-action="open-auth">${esc(t("guest.signin"))}</button>`); return; }
+    if (!files) { box.innerHTML = state.uploads?.error ? `<div class="notice">${esc(state.uploads.error)}</div>` : skeletonRow(4); return; }
+    box.innerHTML = bar + (files.length ? files.map(b => `<div class="file-card">${cardFor(catalogToCard(b))}
+        <button class="link danger" data-action="delete-upload" data-gid="${b.gutenberg_id}" data-title="${esc(b.title)}">${icon("trash")}${esc(t("lib.deleteFile"))}</button></div>`).join("")
+      : emptyState(t("lib.empty.arquivos"), t("lib.emptyText.arquivos")));
+    return;
+  }
 
   if (tab === "anotacoes") {
     const keys = [...new Set([...store.bookmarks, ...store.highlights].map(a => a.book_key))];
@@ -1285,6 +1570,11 @@ async function handleAction(e, el, a, book) {
       go(searchHash(p.q || "", p.mode || "text", { genre: p.genre, lang: el.dataset.lang }));
       break;
     }
+    case "collection-lang": collection.lang = el.dataset.lang; renderCollection(); break;
+    case "search-external": if (state.lastIdentify) runExternal(state.lastIdentify.query); break;
+    case "open-upload": openUpload({ title: el.dataset.title || "", author: el.dataset.author || "" }); break;
+    case "delete-upload": deleteUpload(parseInt(el.dataset.gid, 10), el.dataset.title); break;
+    case "ws-import": importWikisource(el.dataset.lang, el.dataset.title); break;
     case "search-fallback": go(searchHash($("#identify-input").value.trim().slice(0, 300), "phrase")); break;
     case "lib-tab": state.libraryTab = el.dataset.tab; renderLibrary(); break;
     case "lib-open": state.libraryTab = el.dataset.tab; break; // o link segue para #/biblioteca
@@ -1402,6 +1692,18 @@ document.addEventListener("submit", (e) => {
 
 $("#identify-form").addEventListener("submit", (e) => { e.preventDefault(); identify($("#identify-input").value); });
 $("#identify-input").addEventListener("input", updateExcerptCount);
+$("#collection-filter").addEventListener("input", (e) => { collection.text = e.target.value; paintCollection(); });
+$("#upload-form").addEventListener("submit", submitUpload);
+$("#up-file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  $("#up-file-name").textContent = f ? f.name : t("up.choose");
+  if (f && !$("#up-title").value) $("#up-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+});
+$("#ws-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = $("#ws-q").value.trim();
+  if (q.length >= 2) searchWikisource(q, $("#ws-lang").value);
+});
 $("#identify-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); identify(e.target.value); } });
 $("#auth-form").addEventListener("submit", submitAuth);
 $("#photo-input").addEventListener("change", (e) => { handlePhoto(e.target.files[0]); e.target.value = ""; });
@@ -1437,6 +1739,19 @@ document.addEventListener("keydown", (e) => {
 
 // Quando favoritos/biblioteca/anotações mudam, atualiza o que estiver na tela.
 window.addEventListener("freedom:store", () => {
+  const uid = store.user?.id ?? null;
+  if (uid !== state.userId) {
+    const first = state.userId === undefined;
+    state.userId = uid;
+    state.uploads = null;
+    if (!first) {   // entrou/saiu: acervo visível e resultados podem incluir arquivos particulares
+      state.catalog = null;
+      state.lastIdentify = null;
+      $("#identify-result").innerHTML = "";
+      if (state.route.view === "home") loadCatalogRow();
+      if (state.route.view === "collection") renderCollection();
+    }
+  }
   renderAccount();
   $$("[data-action=fav][data-bid]").forEach(btn => {
     const b = lookup(btn.dataset.bid); if (!b) return;
