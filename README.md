@@ -1,6 +1,6 @@
 <p align="center"><img src="frontend/img/logo-full.png" alt="Freadom_Reading — Mais livros. Mais liberdade." width="280"></p>
 
-# Freadom Reading — versão fullstack
+# Freadom Reading
 
 Cole um trecho de um livro e descubra de qual obra ele é. Depois, leia a obra (domínio público) direto no navegador, com biblioteca, favoritos e progresso salvos na sua conta.
 
