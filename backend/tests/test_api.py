@@ -30,7 +30,7 @@ def test_dialogos_curtos_sao_agrupados():
 # ------------------------------------------------------------ identificação
 def test_catalogo_lista_livros_ingeridos(client):
     books = client.get("/api/books").json()
-    assert {b["gutenberg_id"] for b in books} == {ALICE_ID, CASMURRO_ID}
+    assert {b["gutenberg_id"] for b in books} >= {ALICE_ID, CASMURRO_ID}
     assert all(b["excerpt_count"] > 0 for b in books)
 
 

@@ -59,7 +59,15 @@ def split_into_chunks(body: str, min_chars: int = 180, max_chars: int = 1200) ->
         if len(p) <= max_chars:
             pieces.append(p)
             continue
-        sentences = re.split(r"(?<=[.!?;])\s+", p)
+        sentences = []
+        for sent in re.split(r"(?<=[.!?;])\s+", p):
+            # Texto sem pontuação (PDF ruim, lista) viraria um trecho enorme: corta por palavras.
+            while len(sent) > max_chars * 2:
+                cut = sent.rfind(" ", 0, max_chars)
+                cut = cut if cut > 0 else max_chars
+                sentences.append(sent[:cut])
+                sent = sent[cut:].lstrip()
+            sentences.append(sent)
         buf = ""
         for s in sentences:
             if buf and len(buf) + len(s) + 1 > max_chars:

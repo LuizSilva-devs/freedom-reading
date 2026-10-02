@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..database import get_db
+from ..deps import get_optional_user
 from ..i18n import get_lang, msg
-from ..models import Book
+from ..models import LOCAL_ID_START, Book, User
 from ..schemas import BookDetail, FreeVersion, ReaderPage, SearchResult
-from ..services import gutenberg, openlibrary, translation
+from ..services import gutenberg, ingest, openlibrary, translation
+from ..services.books import get_visible, hidden_from, visible_to
 from ..services.text_utils import keywords, normalize_text, word_overlap
 
 router = APIRouter(prefix="/api", tags=["catálogo"])
@@ -17,7 +20,7 @@ GUTENBERG_PREFIX = "gutenberg:"
 def _catalog_result(book: Book) -> SearchResult:
     return SearchResult(
         book_key=f"{GUTENBERG_PREFIX}{book.gutenberg_id}", title=book.title, author=book.author,
-        cover_url=book.cover_url, has_fulltext=True, source="acervo",
+        cover_url=book.cover_url, has_fulltext=True, source="meus-arquivos" if book.owner_id else "acervo",
         gutenberg_id=book.gutenberg_id, in_catalog=True,
     )
 
@@ -40,6 +43,7 @@ def search(
     language: str | None = Query(None, pattern="^(pt|en)$"),
     limit: int = Query(20, ge=1, le=40),
     db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
     lang: str = Depends(get_lang),
 ):
     """Busca no acervo local + Open Library.
@@ -53,7 +57,8 @@ def search(
         raise HTTPException(400, msg("empty_query", lang))
 
     like = f"%{_escape_like(q)}%"
-    local_q = select(Book).where(or_(Book.title.ilike(like, escape="\\"), Book.author.ilike(like, escape="\\")))
+    local_q = select(Book).where(visible_to(user),
+                                 or_(Book.title.ilike(like, escape="\\"), Book.author.ilike(like, escape="\\")))
     if language:
         local_q = local_q.where(Book.language == language)
     local = db.scalars(local_q.limit(5)).all()
@@ -81,20 +86,22 @@ def search(
 
 @router.get("/details", response_model=BookDetail)
 def details(key: str = Query(min_length=2, max_length=120, pattern=r"^[^\x00]*$"), db: Session = Depends(get_db),
-            lang: str = Depends(get_lang)):
+            user: User | None = Depends(get_optional_user), lang: str = Depends(get_lang)):
     """Detalhes de um livro. `key` é /works/OL...W (Open Library) ou gutenberg:<id> (acervo)."""
     if key.startswith(GUTENBERG_PREFIX):
         try:
             gid = int(key.removeprefix(GUTENBERG_PREFIX))
         except ValueError:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, msg("bad_key", lang)) from None
-        book = db.scalar(select(Book).where(Book.gutenberg_id == gid))
+        book = get_visible(db, gid, user)
         if not book:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg("not_in_catalog", lang))
+        desc_key = {"upload": "upload_description", "wikisource": "wikisource_description"}.get(
+            book.source, "catalog_description")
         return BookDetail(
             book_key=key, title=book.title, author=book.author, cover_url=book.cover_url,
-            description=msg("catalog_description", lang, n=book.excerpt_count),
-            subjects=[], in_catalog=True,
+            description=msg(desc_key, lang, n=book.excerpt_count),
+            subjects=[], in_catalog=True, source=book.source, source_url=book.source_url, private=book.private,
             free_version=FreeVersion(gutenberg_id=gid, title=book.title, authors=[book.author],
                                      languages=[book.language]),
         )
@@ -103,7 +110,7 @@ def details(key: str = Query(min_length=2, max_length=120, pattern=r"^[^\x00]*$"
         raise HTTPException(status.HTTP_400_BAD_REQUEST, msg("bad_key", lang))
     # Copia só os campos necessários: depois do rollback os objetos do ORM ficam expirados.
     catalog_books = [{"gutenberg_id": b.gutenberg_id, "title": b.title, "author": b.author, "language": b.language}
-                     for b in db.scalars(select(Book)).all()]
+                     for b in db.scalars(select(Book).where(visible_to(user))).all()]
     db.rollback()  # libera a conexão antes das chamadas externas
     try:
         detail = openlibrary.work_details(key)
@@ -122,10 +129,12 @@ def details(key: str = Query(min_length=2, max_length=120, pattern=r"^[^\x00]*$"
 
 @router.get("/reader/{gutenberg_id}", response_model=ReaderPage)
 def reader_page(
-    gutenberg_id: int = Path(ge=1, le=999999),
+    background: BackgroundTasks,
+    gutenberg_id: int = Path(ge=1, le=9_999_999),
     page: int = Query(0, ge=0, le=100_000),
     translate_to: str | None = Query(None, alias="lang", pattern="^(pt|en)$"),
     db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
     lang: str = Depends(get_lang),
 ):
     """Uma página do livro.
@@ -133,10 +142,18 @@ def reader_page(
     O servidor baixa e pagina o texto (sem problema de CORS). Com `lang=pt|en`,
     se o livro estiver em outro idioma, a página volta traduzida (e fica em cache).
     """
+    # Arquivo particular de outra pessoa, ou livro local que não existe mais: 404 (nunca baixa do Gutenberg).
+    if hidden_from(db, gutenberg_id, user) or (gutenberg_id >= LOCAL_ID_START and not get_visible(db, gutenberg_id, user)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, msg("not_in_catalog", lang))
     try:
         book = gutenberg.get_paged_book(db, gutenberg_id)
     except gutenberg.GutenbergError:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, msg("gutenberg_down", lang)) from None
+
+    if not book.in_catalog and get_settings().auto_ingest_on_read and ingest.claim(gutenberg_id):
+        # O texto já foi baixado para mostrar a página: aproveita e indexa o livro,
+        # para ele passar a ser reconhecido por trecho na próxima identificação.
+        background.add_task(ingest.ingest_after_read, gutenberg_id)
 
     page = min(page, len(book.pages) - 1)
     content = book.pages[page]

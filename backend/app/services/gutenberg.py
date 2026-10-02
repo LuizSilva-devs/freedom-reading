@@ -122,6 +122,7 @@ class PagedBook:
     pages: tuple[str, ...]
     chunk_to_page: tuple[int, ...]
     language: str          # código de 2 letras ("pt", "en") ou "" se desconhecido
+    in_catalog: bool = True  # False = baixado do Gutenberg agora (ainda não está no acervo)
 
 
 _page_cache: OrderedDict[tuple, PagedBook] = OrderedDict()
@@ -164,7 +165,7 @@ def get_paged_book(db: Session, gutenberg_id: int) -> PagedBook:
         chunks, language = _parsed_download(gutenberg_id)
 
     pages, mapping = paginate_chunks(list(chunks), page_chars)
-    paged = PagedBook(tuple(pages), tuple(mapping), language)
+    paged = PagedBook(tuple(pages), tuple(mapping), language, in_catalog=bool(book and count))
     with _page_lock:
         _page_cache[key] = paged
         while len(_page_cache) > _PAGE_CACHE_SIZE:

@@ -57,7 +57,7 @@ def build_windows(normalized: str) -> list[str]:
     return windows[:MAX_WINDOWS]
 
 
-def _query_window(db: Session, window: str, threshold: float, limit: int) -> list[ExcerptHit]:
+def _query_window(db: Session, window: str, threshold: float, limit: int, user_id: int | None) -> list[ExcerptHit]:
     db.execute(
         text("SELECT set_config('pg_trgm.word_similarity_threshold', :t, false)"),
         {"t": str(threshold)},
@@ -68,17 +68,20 @@ def _query_window(db: Session, window: str, threshold: float, limit: int) -> lis
             SELECT e.id, e.book_id, e.position, e.content,
                    word_similarity(:q, e.content_normalized) AS score
             FROM excerpts e
+            JOIN books b ON b.id = e.book_id
             WHERE :q <% e.content_normalized
+              AND (b.owner_id IS NULL OR b.owner_id = :uid)  -- arquivos enviados: só para quem enviou
             ORDER BY score DESC
             LIMIT :limit
             """
         ),
-        {"q": window, "limit": limit},
+        {"q": window, "limit": limit, "uid": user_id},
     ).all()
     return [ExcerptHit(r.id, r.book_id, r.position, r.content, float(r.score)) for r in rows]
 
 
-def identify(db: Session, excerpt: str, threshold: float | None = None, top: int = 5) -> tuple[list[BookMatch], float]:
+def identify(db: Session, excerpt: str, threshold: float | None = None, top: int = 5,
+             user_id: int | None = None) -> tuple[list[BookMatch], float]:
     settings = get_settings()
     threshold = settings.similarity_threshold if threshold is None else threshold
     normalized = normalize_text(excerpt)[: settings.max_excerpt_chars]
@@ -86,7 +89,7 @@ def identify(db: Session, excerpt: str, threshold: float | None = None, top: int
 
     by_book: dict[int, BookMatch] = {}
     for w_idx, window in enumerate(windows):
-        for hit in _query_window(db, window, threshold, limit=20):
+        for hit in _query_window(db, window, threshold, limit=20, user_id=user_id):
             match = by_book.get(hit.book_id)
             if match is None:
                 by_book[hit.book_id] = BookMatch(hit.book_id, hit.score, hit, 1, {w_idx})

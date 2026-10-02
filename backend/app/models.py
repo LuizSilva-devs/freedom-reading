@@ -13,8 +13,13 @@ def utcnow() -> datetime:
 
 
 # --------------------------------------------------------------------------
-# Acervo de identificação (livros ingeridos do Project Gutenberg)
+# Acervo de identificação
 # --------------------------------------------------------------------------
+# IDs de livros: os do Project Gutenberg usam o próprio número do Gutenberg.
+# Livros de outras fontes (Wikisource, arquivos enviados) recebem um número a
+# partir de LOCAL_ID_START, então o resto do app (leitor, biblioteca, marcadores)
+# trata todos do mesmo jeito.
+LOCAL_ID_START = 5_000_000
 class Book(Base):
     __tablename__ = "books"
 
@@ -25,7 +30,16 @@ class Book(Base):
     language: Mapped[str] = mapped_column(String(10), default="pt")
     cover_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     excerpt_count: Mapped[int] = mapped_column(Integer, default=0)
+    # "gutenberg" | "wikisource" | "upload"
+    source: Mapped[str] = mapped_column(String(20), default="gutenberg")
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Arquivo enviado por um usuário: só ele vê, lê e identifica trechos desse livro.
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    @property
+    def private(self) -> bool:
+        return self.owner_id is not None
 
     excerpts: Mapped[list["Excerpt"]] = relationship(
         back_populates="book", cascade="all, delete-orphan", order_by="Excerpt.position"

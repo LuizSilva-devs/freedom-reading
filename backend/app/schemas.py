@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 LibraryStatus = Literal["quero_ler", "lendo", "concluido"]
 
 # Limites que cabem nas colunas INTEGER do PostgreSQL (antes, números enormes davam erro 500).
-MAX_GUTENBERG_ID = 999_999
+MAX_GUTENBERG_ID = 9_999_999   # Gutenberg (< 1 milhão) + livros de outras fontes (a partir de 5 milhões)
 MAX_PAGE = 100_000
 MAX_OFFSET = 1_000_000
 
@@ -109,6 +109,31 @@ class IdentifyIn(CleanModel):
     excerpt: str = Field(max_length=5000)
 
 
+class ExternalLink(BaseModel):
+    kind: Literal["buy", "borrow", "read", "info"]
+    label: str
+    url: str
+
+
+class ExternalBook(BaseModel):
+    title: str
+    author: str = ""
+    year: str | None = None
+    language: str = ""
+    cover_url: str | None = None
+    snippet: str = ""
+    source: Literal["google_books", "internet_archive"]
+    public_domain: bool = False
+    links: list[ExternalLink] = []
+    catalog_gutenberg_id: int | None = None   # o mesmo livro já está no acervo: dá para ler aqui
+
+
+class ExternalOut(BaseModel):
+    phrase: str
+    results: list[ExternalBook]
+    failed: list[str] = []
+
+
 class BookOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -118,6 +143,42 @@ class BookOut(BaseModel):
     language: str
     cover_url: str | None = None
     excerpt_count: int
+    source: str = "gutenberg"
+    source_url: str | None = None
+    private: bool = False
+
+
+class WikisourceResult(BaseModel):
+    title: str
+    lang: str
+    url: str
+    snippet: str = ""
+    is_chapter: bool = False
+    gutenberg_id: int | None = None   # preenchido quando a obra já está no acervo
+
+
+class WikisourceImportIn(CleanModel):
+    lang: Literal["pt", "en"] = "pt"
+    title: str = Field(min_length=1, max_length=300)
+
+    @field_validator("title")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("título vazio")
+        return v
+
+
+class WikisourceJob(BaseModel):
+    id: str
+    lang: str
+    title: str
+    status: Literal["queued", "running", "done", "error"]
+    done: int = 0
+    total: int = 0
+    book: BookOut | None = None
+    error: str | None = None
 
 
 class MatchOut(BaseModel):
@@ -167,6 +228,9 @@ class BookDetail(BaseModel):
     subjects: list[str] = []
     free_version: FreeVersion | None = None
     in_catalog: bool = False
+    source: str = "openlibrary"          # gutenberg | wikisource | upload | openlibrary
+    source_url: str | None = None
+    private: bool = False
 
 
 class ReaderPage(BaseModel):

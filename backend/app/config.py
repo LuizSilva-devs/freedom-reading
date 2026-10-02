@@ -49,6 +49,23 @@ class Settings(BaseSettings):
 
     # Leitor
     reader_page_chars: int = 2500
+    # Livro aberto no leitor que não está no acervo é indexado em segundo plano
+    # e passa a ser reconhecido por trecho (até este tamanho de arquivo).
+    auto_ingest_on_read: bool = True
+    auto_ingest_max_mb: float = 6.0
+
+    # Identificação fora do acervo (livros modernos/pagos): Google Books + Internet Archive.
+    # Sem chave o Google Books funciona com uma cota diária menor; crie uma grátis no Google Cloud se precisar.
+    google_books_api_key: str = ""
+    external_archive: bool = True            # busca no texto do Internet Archive (mais lenta)
+    external_archive_timeout: float = 25.0
+    external_searches_per_hour: int = 30     # por IP
+
+    # Outras fontes: importações da Wikisource (por usuário) e livros enviados pelos usuários
+    wikisource_imports_per_hour: int = 10
+    upload_max_mb: float = 20.0
+    uploads_per_user: int = 50
+    uploads_per_hour: int = 20
 
     # Tradução automática no leitor
     #   mymemory       -> gratuito, sem chave (limite diário; informe TRANSLATION_EMAIL para 50 mil caracteres/dia)

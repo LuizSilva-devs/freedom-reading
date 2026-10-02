@@ -2,7 +2,7 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,13 +11,13 @@ from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..i18n import get_lang, msg
-from ..models import User
+from ..models import Book, PageTranslation, User
 from ..schemas import (
     ChangePasswordIn, DeleteAccountIn, ForgotPasswordIn, LoginIn, MessageOut, ProfileIn, RegisterIn,
     ResetPasswordIn, TokenOut, UserOut, VerifyEmailIn,
 )
 from ..security import create_access_token, hash_password, verify_password
-from ..services import auth_tokens, email
+from ..services import auth_tokens, email, gutenberg
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -206,6 +206,10 @@ def delete_account(data: DeleteAccountIn, user: User = Depends(get_current_user)
     if not verify_password(data.password, user.password_hash):
         ratelimit.allow(key, limit, 300)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, msg("wrong_password", lang))
+    # Livros enviados: o banco apaga junto (ON DELETE CASCADE); as traduções em cache saem aqui.
+    own = select(Book.gutenberg_id).where(Book.owner_id == user.id)
+    db.execute(delete(PageTranslation).where(PageTranslation.gutenberg_id.in_(own)))
     db.delete(user)
     db.commit()
+    gutenberg.clear_page_cache()
     return MessageOut(message=msg("account_deleted", lang))
